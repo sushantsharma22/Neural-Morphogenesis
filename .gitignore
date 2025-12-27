@@ -1,0 +1,83 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# Output files
+output/
+frames/
+logs/
+*.mp4
+*.avi
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.exr
+*.npy
+*.npz
+
+# Checkpoints and model weights
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+weights/
+
+# Metadata
+metadata/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Secrets and configs with credentials
+.env
+*.env
+secrets.yaml
+secrets.yml
+credentials.json
+*.key
+*.pem
+
+# Taichi cache
+.taichi_cache/
+*.ti
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Test outputs
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp

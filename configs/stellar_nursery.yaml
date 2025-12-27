@@ -1,0 +1,45 @@
+# Stellar Nursery Configuration
+# Creates cosmic gas cloud structures with bioluminescent star formation
+
+_defaults_:
+  - default
+
+simulation:
+  num_particles: 10_000_000
+  total_frames: 1000
+  
+  physics:
+    gravity: [0.0, 0.0, 0.0]  # Zero-G space environment
+    damping: 0.998
+    
+  material:
+    density: 100.0  # Low density gas
+    young_modulus: 500.0  # Very soft
+    viscosity: 0.05
+
+morphogenesis:
+  templates:
+    - name: "stellar_nursery"
+      weight: 1.0
+      
+  phases:
+    chaos_frames: [0, 150]
+    emergence_frames: [150, 500]
+    refinement_frames: [500, 800]
+    stabilization_frames: [800, 1000]
+
+pde:
+  base_type: "navier_stokes"
+  navier_stokes:
+    viscosity: 0.005
+    vorticity_confinement: 1.0
+    
+render:
+  bloom:
+    intensity: 4.0
+    threshold: 0.6
+    color_shift: [0.8, 0.9, 1.5]  # Blue stellar tint
+    
+  particles:
+    emission_strength: 8.0
+    color_palette: "stellar"

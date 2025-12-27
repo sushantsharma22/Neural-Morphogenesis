@@ -1,0 +1,48 @@
+# Coral Lattice Configuration
+# Creates organic coral reef-like branching structures
+
+_defaults_:
+  - default
+
+simulation:
+  num_particles: 10_000_000
+  total_frames: 800
+  
+  physics:
+    gravity: [0.0, -0.2, 0.0]  # Light underwater gravity
+    damping: 0.995
+    
+  material:
+    density: 1200.0
+    young_modulus: 8000.0
+    poisson_ratio: 0.4
+    viscosity: 0.2
+
+morphogenesis:
+  templates:
+    - name: "coral_lattice"
+      weight: 1.0
+      
+  phases:
+    chaos_frames: [0, 80]
+    emergence_frames: [80, 350]
+    refinement_frames: [350, 600]
+    stabilization_frames: [600, 800]
+
+pde:
+  base_type: "reaction_diffusion"
+  reaction_diffusion:
+    diffusion_a: 1.2
+    diffusion_b: 0.4
+    feed_rate: 0.062
+    kill_rate: 0.065
+    
+render:
+  bloom:
+    intensity: 3.0
+    threshold: 0.7
+    color_shift: [1.2, 0.8, 1.0]  # Warm coral tint
+    
+  particles:
+    emission_strength: 4.0
+    color_palette: "bioluminescent_ocean"
