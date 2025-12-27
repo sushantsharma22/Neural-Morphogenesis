@@ -593,7 +593,7 @@ class SimpleSoftwareRenderer:
 class EnhancedSoftwareRenderer:
     """
     Enhanced software renderer with proper particle visualization
-    Renders particles as glowing spheres with depth-based effects
+    Uses fully vectorized GPU operations for fast rendering
     """
     
     def __init__(
@@ -633,12 +633,15 @@ class EnhancedSoftwareRenderer:
         camera: Optional['Camera'] = None,
         point_size: float = 4.0,
     ) -> np.ndarray:
-        """Render particles with glow effect"""
+        """Render particles - fast vectorized version"""
         # Convert inputs to tensor
         if isinstance(positions, np.ndarray):
             positions = torch.from_numpy(positions).to(self.device)
         if isinstance(colors, np.ndarray):
             colors = torch.from_numpy(colors).to(self.device)
+        
+        positions = positions.float()
+        colors = colors.float()
             
         # Update camera if provided
         if camera is not None:
@@ -657,7 +660,7 @@ class EnhancedSoftwareRenderer:
         right = right / (right.norm() + 1e-8)
         up = torch.linalg.cross(right, forward)
         
-        # Project particles
+        # Project particles - all vectorized
         rel_pos = positions - self.camera_pos
         
         # Camera space coordinates
@@ -669,79 +672,70 @@ class EnhancedSoftwareRenderer:
         fov_rad = self.camera_fov * math.pi / 180.0
         aspect = self.width / self.height
         
-        mask = z > 0.1  # Only render particles in front of camera
+        mask = z > 0.1
         
         proj_x = (x / (z + 1e-8)) / math.tan(fov_rad / 2.0)
         proj_y = (y / (z + 1e-8)) / math.tan(fov_rad / 2.0) * aspect
         
         # Convert to pixel coordinates
-        px = ((proj_x + 1) / 2 * self.width)
-        py = ((1 - proj_y) / 2 * self.height)
+        px = ((proj_x + 1) / 2 * self.width).long()
+        py = ((1 - proj_y) / 2 * self.height).long()
         
         # Create image with dark background
-        bg = torch.tensor(self.background_color, device=self.device).view(3, 1, 1)
-        image = bg.expand(3, self.height, self.width).clone()
+        image = torch.zeros(3, self.height, self.width, device=self.device)
+        image[0, :, :] = self.background_color[0]
+        image[1, :, :] = self.background_color[1]
+        image[2, :, :] = self.background_color[2]
         
-        # Valid particles
-        valid = mask & (px >= -50) & (px < self.width + 50) & (py >= -50) & (py < self.height + 50)
+        # Create depth buffer
+        depth_buffer = torch.full((self.height, self.width), 1e10, device=self.device)
         
-        # Get valid indices sorted by depth (back to front)
+        # Valid particles within bounds
+        valid = mask & (px >= 0) & (px < self.width) & (py >= 0) & (py < self.height)
+        
+        # Get valid indices
         indices = torch.where(valid)[0]
-        if len(indices) > 0:
-            valid_z = z[indices]
-            sorted_idx = torch.argsort(valid_z, descending=True)
-            indices = indices[sorted_idx]
-            
-            # Limit particles rendered for speed (render closest ones)
-            max_particles = min(len(indices), 50000)
-            indices = indices[-max_particles:]  # Closest particles
-            
-            # Render particles with size based on depth
-            for idx in indices:
-                pxi = int(px[idx].item())
-                pyi = int(py[idx].item())
-                zi = z[idx].item()
-                
-                # Size decreases with distance
-                size = max(1, int(self.particle_base_size * 5.0 / (zi + 0.5)))
-                
-                # Intensity based on depth (closer = brighter)
-                intensity = min(1.0, 3.0 / (zi + 0.5)) * self.glow_intensity
-                
-                # Draw particle with glow
-                color = colors[idx]
-                self._draw_glow(image, pxi, pyi, color, size, intensity)
         
-        # Apply simple tone mapping
+        if len(indices) > 0:
+            valid_px = px[indices]
+            valid_py = py[indices]
+            valid_colors = colors[indices]
+            valid_depths = z[indices]
+            
+            # Compute intensity based on depth
+            intensities = torch.clamp(2.0 / (valid_depths + 0.3), 0.4, 2.5) * self.glow_intensity
+            
+            # Sort by depth (far to near for proper layering)
+            sorted_idx = torch.argsort(valid_depths, descending=True)
+            valid_px = valid_px[sorted_idx]
+            valid_py = valid_py[sorted_idx]
+            valid_colors = valid_colors[sorted_idx]
+            intensities = intensities[sorted_idx]
+            valid_depths = valid_depths[sorted_idx]
+            
+            # Render center pixels with intensity
+            weighted_colors = valid_colors * intensities.unsqueeze(1)
+            
+            # Use scatter_add for accumulative blending (gives glow effect)
+            flat_indices = valid_py * self.width + valid_px
+            
+            # Scatter to image channels
+            for c in range(3):
+                image[c].view(-1).scatter_add_(0, flat_indices, weighted_colors[:, c] * 0.8)
+            
+            # Add larger glow by also splatting to neighboring pixels
+            for dy in [-1, 0, 1]:
+                for dx in [-1, 0, 1]:
+                    if dy == 0 and dx == 0:
+                        continue
+                    neighbor_px = torch.clamp(valid_px + dx, 0, self.width - 1)
+                    neighbor_py = torch.clamp(valid_py + dy, 0, self.height - 1)
+                    neighbor_flat = neighbor_py * self.width + neighbor_px
+                    falloff = 0.4  # Glow falloff
+                    for c in range(3):
+                        image[c].view(-1).scatter_add_(0, neighbor_flat, weighted_colors[:, c] * falloff)
+        
+        # Tone mapping and clamp
         image = torch.clamp(image, 0, 1)
         
-        return image.permute(1, 2, 0).cpu().numpy()  # (H, W, 3)
-    
-    def _draw_glow(
-        self,
-        image: torch.Tensor,
-        px: int,
-        py: int,
-        color: torch.Tensor,
-        size: int,
-        intensity: float,
-    ):
-        """Draw a glowing particle"""
-        h, w = image.shape[1], image.shape[2]
-        
-        # Draw larger glow area
-        glow_size = size * 2
-        for dy in range(-glow_size, glow_size + 1):
-            for dx in range(-glow_size, glow_size + 1):
-                nx, ny = px + dx, py + dy
-                if 0 <= nx < w and 0 <= ny < h:
-                    dist_sq = dx * dx + dy * dy
-                    if dist_sq <= glow_size * glow_size:
-                        # Gaussian falloff
-                        sigma_sq = (size * 0.7) ** 2
-                        falloff = math.exp(-dist_sq / (2 * sigma_sq))
-                        contribution = color * falloff * intensity
-                        image[:, ny, nx] = torch.clamp(
-                            image[:, ny, nx] + contribution,
-                            0, 1.5  # Allow some HDR
-                        )
+        return image.permute(1, 2, 0).cpu().numpy()

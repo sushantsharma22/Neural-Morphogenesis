@@ -104,7 +104,7 @@ def parse_args():
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="/data/frames",
+        default="./output/frames",
         help="Output directory for frames"
     )
     parser.add_argument(
@@ -136,7 +136,7 @@ class AletheiaEngine:
     def __init__(
         self,
         config_path: str,
-        output_dir: str = "/data/frames",
+        output_dir: str = "./output/frames",
         seed: Optional[int] = None,
         preview_mode: bool = False,
     ):
